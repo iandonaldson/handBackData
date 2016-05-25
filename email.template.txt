@@ -1,0 +1,190 @@
+Dear ${FIRSTNAME}
+
+The Barts and the London Genome Centre is transferring ownership of data from completed projects to the project lead in line with our data retention policy http://www.smd.qmul.ac.uk/gc/Services/GC00607_dataRetentionDraft2.pdf 
+
+A directory containing data from a past project belonging to you has been prepared.  It is called ${ARCHIVE_NAME} and a directory listing of its contents is appended to this email.  
+
+If you would like to retrieve a copy of these data for your own records, follow the instructions below within the next ${WARNINGS_LEFT} weeks.  Additional reminder emails will be sent once per week.  The data will be deleted automatically after ${WARNINGS_LEFT} weeks time.  Please send me a brief email letting me know if you have successfully retrieved the data or if you don't want it.  I will delete the archive and you will not receive any additional emails.  
+
+If you do nothing, the data will be deleted on ${EXPDATE}.
+
+If you have any questions, please contact me at the email address above or the Centre Manager, Charles Mein, at c.a.mein@qmul.ac.uk.
+
+
+Best regards,
+Ian Donaldson
+Barts and the London Genome Centre
+
+
+###################################################
+
+How to retrieve your data.
+=========================
+
+If you are not familiar with the unix command line, pass these instructions onto someone in your group who is.
+
+You will need an account on apocrita.  If you do not have an account, you can obtain an account by following the instructions here:
+
+http://docs.hpc.qmul.ac.uk/intro/accounts/ 
+
+
+Sequence data files can be quite large.  We recommend that you retrieve your data by moving it into your account on apocrita where you are likely to have available disk space for it.  Instructions to do this are given next under - 'Retrieving your data using ssh'.
+
+If you would like to retrieve part or all of the data directly to your local machine, see the section below entitled - 'Moving data off of apocrita'.
+
+
+
+
+Retrieving your data using ssh
+==============================
+
+== login ==
+
+Login to your home directory on apocrita using ssh (for instructions on how to do this for Windows, Mac or Linux, see http://docs.hpc.qmul.ac.uk/intro/login/).
+
+== qlogin ==
+
+This step is optional. Type:  
+
+qlogin
+
+and wait for a prompt giving you access to your own interactive shell running
+somewhere besides on the login node.
+
+Strictly speaking, this step is not necessary for copying a file.  However,
+login nodes are rebooted frequently so you run the risk of having your copy
+operation interrupted (especially for large files).  Using a qlogin session
+for the copy may also speed up the transfer as the login node can be quite busy - 
+on the other hand, getting a qlogin session can require waiting depending on
+how busy the cluster is.  
+More about qlogin can be found here:
+http://docs.hpc.qmul.ac.uk/using/submit/#interactive-jobs
+
+
+== decide where to store your data ==
+
+Before you go onto the next step, make sure you have enough disk-space to copy
+the data.  Sequence files can be large (for example, 40 GB and higher).  By
+default, most users have only 50 GB of disk space allocated to them in their home
+areas on apocrita.  Check your free space on apocrita using:
+
+qmquota -s
+
+You might consider moving data to a group area that has lots of free disk
+space or to your scratch space  (users get 300 GB by default) located at
+/data/scratch/www001 where www001 is your apocrita user name.  Be careful
+using scratch space; its not meant for permanent storage - it is not backed 
+up and it can be deleted in the event of an apocrita system shutdown.  You can
+read more about storage on apocrita here:
+http://docs.hpc.qmul.ac.uk/storage/storage/
+and here:
+http://docs.hpc.qmul.ac.uk/storage/backups_and_snapshots/ 
+
+Once you have decided where to store your data, change directories to the place where 
+you want to copy the data to; like this:
+
+cd my_data
+
+or make a new directory and then move into that directory, like this:
+
+mkdir my_data
+cd my_data
+
+
+== copy the data ==
+
+The simplest way to copy your data is by using the copy command (cp) described
+next, but you may want to consider rsync if you have an unusually large file
+or you experience problems with interrupted transfers (see below).
+
+Once you are in the directory where you want to copy the data to, copy the data using this line:
+
+cp -r  ${OUTGOING_DIR}/${ARCHIVE_NAME} .
+
+the . at the end of the above command means that the data is to be copied "here" in the directory that you are currently in.
+
+Note: you only have correct permissions to copy this directory directly and you will be unable to access any of the directories above it; for example you cannot 
+
+cd ${OUTGOING_DIR}
+
+although you could change to your directory directly using
+
+cd ${OUTGOING_DIR}/${ARCHIVE_NAME}
+
+and then type
+
+ls -la
+
+to obtain a listing for your directory.
+
+
+Alternatively, you can use rsync instead of cp to copy the data.
+rsync has the advantage of allowing failed copy jobs to be resumed as opposed
+to restarting them from scratch.  You might want to consider rsync for
+particularly large files especially if you have tried a straight cp and it has
+timed out.
+
+Once you are in the directory on apocrita where you want to copy the data to, type the following:
+
+rsync -avz ${OUTGOING_DIR}/${ARCHIVE_NAME} .
+
+More information on rsync is provided here:
+http://docs.hpc.qmul.ac.uk/storage/movingdata/
+
+
+How to check your data
+=======================
+
+
+Once your data has finished downloading, change into the directory using:
+
+cd  ${ARCHIVE_NAME}
+
+here you will find the actual archive
+
+${ARCHIVE_NAME}.tar.gz
+
+To check whether the data transfer has occurred correctly, you may choose to check the md5sum key of the data you just transferred, by typing:
+
+md5sum ${ARCHIVE_NAME}.tar.gz
+
+this will return a string of digits and letters that looks something like this (this is just an example)
+
+081b9c3cf03f2a954c6eb2b66ab8219f  directory_name.tar.gz
+
+and this key should be identical to the key in the file "md5sum.result" in this directory.  You can view this by typing:
+
+cat md5sum.result
+
+If the two keys are not identical, you can try re-downloading the data or contact us.
+
+
+How to unpack your data
+=======================  
+
+The data has been compressed into an archive that must be unpacked before you can use it.  To unpack the data, type
+
+tar -zxvf ${ARCHIVE_NAME}.tar.gz
+
+A new directory will appear and you can cd into this as you would any other directory.
+
+
+Moving data off of apocrita
+===========================
+
+Moving all or some of your data from apocrita to your local machine (laptop, lab computer or other mainframe) can be accomplished using rsync, scp, sftp, FileZilla or sshfs.  All of these protocols are described here:
+
+http://docs.hpc.qmul.ac.uk/storage/movingdata/ 
+
+Two important notes:
+
+Contact its-research-support@qmul.ac.uk before doing large file transfers and ask that your time-limit is increased.  If you don't do this, you run the risk of having your file transfer time-out.
+If you are transferring directly from the directory that we have provided, remember that you only have access to this directory.  You do not have access to directories above it.
+
+So, for example, attempts to navigate to your directory using the FileZilla 'remote-site' address bar using:
+
+${OUTGOING_DIR}
+
+will fail because you don't have permissions to view that directory.  Instead, you must navigate directly to 
+
+${OUTGOING_DIR}/${ARCHIVE_NAME}
