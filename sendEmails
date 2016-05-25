@@ -1,0 +1,175 @@
+#!/bin/bash
+
+############
+#sendEmails
+
+#for each line in a mandate file, a warning email is sent to a client with
+#instructions on how to retrieve their data
+#after a maximum number of warnings, the archive is moved to an are
+#for deletion
+
+#usage
+#this script is intended to be setup as a crontab
+#e.g.
+#man crontab
+#crontab -e
+#enter this line in crontab editor
+#55 * * * * cd /data/home/wgw057/projects/handbackData/outgoing_admin/scripts; ./sendEmails
+#0 18 * * 2 cd /data/WHRI-GenomeCentre/outgoing_admin/scripts; ./sendEmails
+#get settings
+if [ -e "handbackData.config" ]; then
+    . "$PWD/handbackData.config"
+else
+    echo "handbackData.config file cannot be found. quitting."
+    exit
+fi
+
+
+#export variables for use in composing email
+export OUTGOING_DIR
+
+
+#keeping track of time
+START_TIME=$(date +%s.%N)
+#command
+END_TIME=$(date +%s.%N)
+ELAPSED_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+#echo "$0 - $(date) - starting. elapsed time is: ${ELAPSED_TIME}"
+
+
+
+# example line from handbackMandate
+#0       Feber_Andrew_cp Andrew  Feber   ian.oslo@gmail.com      Wed Apr  6 18:59:53 BST 2016    Feber_Andrew_cp
+
+
+
+#check that mandate file exists
+if [ ! -e ${HANDBACK_MANDATE} ]; then
+	echo "error; mandate file missing"
+        exit
+fi
+
+#create an empty file
+touch ${NEW_HANDBACK_MANDATE}
+
+
+#check that the log file exists
+
+
+
+
+
+#cycle through each line in the HANDBACK_MANDATE and do stuff
+while read LINE; do
+    #get parameters for this archive
+    IFS=$'\t'
+    read -r -a THIS_ARRAY <<< "$LINE";  #### DONT FORGET QUOTES around $STRING
+    WARNINGS_GIVEN="${THIS_ARRAY[0]}"
+    export ARCHIVE_NAME=${THIS_ARRAY[1]}
+    export FIRSTNAME=${THIS_ARRAY[2]}
+    LASTNAME=${THIS_ARRAY[3]}
+    EMAIL=${THIS_ARRAY[4]}
+    FIRST_WARNING_DATE=${THIS_ARRAY[5]}
+    ODIR=${THIS_ARRAY[6]}
+
+    echo "warnings given ${WARNINGS_GIVEN}"
+    echo "archive name is ${ARCHIVE_NAME}"
+    echo "first name is ${FIRSTNAME}"
+    echo "last name is ${LASTNAME}"
+    echo "email is ${EMAIL}"
+    echo "first warning date is  ${FIRST_WARNING_DATE}"
+    echo "original directory is ${ODIR}"
+
+    #check to make sure the directory exists - otherwise post an error and go to the next line in mandate
+    if [ ! -d ${OUTGOING_DIR}/${ARCHIVE_NAME} ]; then
+        echo -e "error. ${OUTGOING_DIR}/${ARCHIVE_NAME} does not exist. skipping."
+        echo -e "==========================/n"
+        continue
+    fi
+
+    #if enough warnings have not been sent out, compose an (another) email
+    if [ ${WARNINGS_GIVEN} -lt ${TOTAL_WARNINGS} ]; then
+         
+         #calculate warnings left (for use in email)
+         WARNINGS_LEFT=$((TOTAL_WARNINGS - WARNINGS_GIVEN))
+         export WARNINGS_LEFT
+
+         #if this is the first warning - reset the first warning date to today (for use in the mandate file)
+         if [ ${WARNINGS_GIVEN} -eq 0 ]; then
+             FIRST_WARNING_DATE=$(date)
+         fi
+
+         #calculate the expiry date for these data
+         EXPDATE=$(date -d "${FIRST_WARNING_DATE}+${DAYS_BEFORE_DELETION} days")
+         export EXPDATE
+         echo -e "expiry date will be ${EXPDATE}/n"
+
+         #compose the email
+         envsubst < "${TEMPLATE_EMAIL}" > "this.email.txt" 
+
+         #send the email
+         mail -s "your data at the Barts and the London Genome Centre" \
+         -a ${OUTGOING_DIR}/${ARCHIVE_NAME}/archive.listing.${ARCHIVE_NAME} \
+         -c ${CC_EMAIL} \
+         ${EMAIL} < this.email.txt
+         
+         #log
+         MAIL_EXIT=$?
+         #this check will not catch incorrect emails
+         if [ ${MAIL_EXIT} -eq 0 ]; then
+            echo -e "successfully emailed ${EMAIL} regarding ${ARCHIVE_NAME}.";
+            echo -e "==========================/n";
+         else
+            echo -e "error emailing ${EMAIL} regarding ${ARCHIVE_NAME}; email error ${MAIL_EXIT}";
+            echo -e "==========================/n";
+         fi
+
+         #increment the warnings given by one
+         WARNINGS_GIVEN=$((WARNINGS_GIVEN + 1))
+
+         #write a new line to a new mandate file
+         echo -e "${WARNINGS_GIVEN}\t${ARCHIVE_NAME}\t${FIRSTNAME}\t${LASTNAME}\t${EMAIL}\t${FIRST_WARNING_DATE}\t${ODIR}" >> ${NEW_HANDBACK_MANDATE}
+
+    else
+        #if all warnings have been given, then its time to mark the directory for deletion
+         echo -e "${WARNINGS_GIVEN}\t${ARCHIVE_NAME}\t${FIRSTNAME}\t${LASTNAME}\t${EMAIL}\t${FIRST_WARNING_DATE}\t${ODIR}" >> ${DELETION_MANDATE}
+         mv ${OUTGOING_DIR}/${ARCHIVE_NAME} ${DELETION_DIR}/.
+
+        #log
+        MV_EXIT=$?
+        if [ ${MV_EXIT} -eq 0 ]; then
+            echo -e "successfully marked and moved ${ARCHIVE_NAME} for deletion.";
+            echo -e "==========================/n";
+         else
+            echo -e "error moving ${ARCHIVE_NAME} for deletion; mv error ${MV_EXIT}";
+            echo -e "==========================/n";
+         fi
+
+    fi
+    
+
+done < ${HANDBACK_MANDATE}
+
+
+#remove the old mandate and replace with the newly made one
+cp ${HANDBACK_MANDATE} ${HANDBACK_MANDATE}.bk
+mv ${NEW_HANDBACK_MANDATE} ${HANDBACK_MANDATE}
+
+#clean up
+if [ -e this.email.txt ]; then rm this.email.txt; fi
+
+
+#log end time
+END_TIME=$(date +%s.%N)
+ELAPSED_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+echo "$PROG_NAME - $(date) - finished. logfile is in ${LOG}" | tee -a ${LOG}
+echo "$PROG_NAME - $(date) - elapsed time is: ${ELAPSED_TIME}" | tee -a ${LOG}
+echo -e "===\n" >> ${LOG}
+
+
+exit
+
+#=================================================================================
+
+
+notes
