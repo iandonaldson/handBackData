@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# handbackData_array.qsub
+#
+# array run version of handbackData
+# given a mandate file, multiple instances of handbackData are started
+# each will tarball some directory and place it in an outgoing folder
+# a line is added to the handbackMandate
+# author: Ian Donaldson - i.donaldson@qmul.ac.uk
+#
+# usage
+# qsub -o logs -e logs -t 1-N handbackData_array.qsub
+# where
+# N is th number of sample names
+# -o and -e specify paths to an exsting directory where output and error logs from each job will be posted
+# -t is the number of tasks (number of samples whose bam files should be merged)
+#
+# set these parameters
+PROJECT_DIR=/data/WHRI-GenomeCentre/outgoing_admin
+INPUT_DIR=/data/WHRI-GenomeCentre/shares/Projects/NGS_Projects/DNA_Sequencing
+MANDATE=${PROJECT_DIR}/mandate/prepareMandate
+OUTPUT_DIR=${PROJECT_DIR}/logs
+
+
+
+###
+# no changes required beyond this point
+###
+
+
+
+# job setup
+#$ -m bes
+#$ -M i.donaldson@qmul.ac.uk
+#$ -cwd
+#$ -V    
+##$ -pe smp 4
+#$ -l h_rt=24:0:0
+#$ -l h_vmem=2G   
+#$ -N prepareData
+
+#retrieve the variables for the job from the mandate file
+THIS_LINE=$(sed -n -e "$SGE_TASK_ID p" ${MANDATE})
+read -d "\t" -a THIS_TASK <<< ${THIS_LINE}
+THIS_DIR=${THIS_TASK[0]}
+FIRST=${THIS_TASK[1]}
+LAST=${THIS_TASK[2]}
+EMAIL=${THIS_TASK[3]}
+
+
+
+if [ ! -d ${INPUT_DIR} ]; then
+    echo "${INPUT_DIR} not found. quitting";
+    exit;
+fi
+
+#all output files will be written to a single sub-directory for each task
+#in this case - just log files while all other output re-direection is handled by script
+if [ ! -d ${OUTPUT_DIR} ]; then mkdir -p ${OUTPUT_DIR}; fi
+
+#log what will be done for this specfic task
+echo -e "${0} starting for ${THIS_DIR}. \
+Number of jobs is ${NUM_JOBS} and task id is ${SGE_TASK_ID}" | tee -a ${OUTPUT_DIR}/prepare.log
+
+
+#do it
+./handbackData -d ${INPUT_DIR}/${THIS_DIR} \
+             -f ${FIRST} \
+             -l ${LAST} \
+             -e ${EMAIL}
+
+#log what happened
+echo "handbackData exited with code $? for ${THIS_DIR}" | tee -a ${OUTPUT_DIR}/prepare.log
+
+exit
+
+####
