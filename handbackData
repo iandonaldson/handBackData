@@ -1,0 +1,248 @@
+#!/bin/bash
+
+#handbackData
+#command line program
+#given a directory for archiving, clients first and last name and their email
+#the directory is tarballed and added to an outgoing directory
+#along with a archive directory listing and an md5 hash key
+#also, a line is added to a handbackMandate file
+#which is used by sendEmails to send warnings about the 
+#impending doom of the file and instructions on how to 
+#retrieve a copy for themselves
+
+#get settings
+if [ -e "handbackData.config" ]; then
+    . "$PWD/handbackData.config"
+else
+    echo "handbackData.config file cannot be found. quitting."
+    exit
+fi
+
+#keeping track of time
+START_TIME=$(date +%s.%N)
+#command
+END_TIME=$(date +%s.%N)
+ELAPSED_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+#echo "$0 - $(date) - starting. elapsed time is: ${ELAPSED_TIME}"
+
+
+###
+# notes on log files
+# * LOG is a central log for adminstration of outgoing and any process that affects it
+# * ARCHIVE_LOG (defined below) is for recording details about an individual archive prepapred by this script
+
+
+
+###
+# check directory structure
+# this can be moved to a separate script at a later point
+# the code here ensures that needed directories are prepsent and then either exits or creates them 
+###
+
+if [ ! -d ${OUTGOING_DIR} ]; then
+    echo "${PROG_NAME} - $(date) - outgoing directory ${OUTGOING_DIR} does not exist. quitting";
+    exit;
+fi
+
+if [ ! -d ${OUTGOING_ADMIN_DIR} ]; then
+    echo "${PROG_NAME} - $(date) - outgoing administration directory ${OUTGOING_ADMIN_DIR} does not exist. quitting";
+    exit;
+fi
+
+if [ ! -d ${LOGS_DIR} ]; then
+    echo "${PROG_NAME} - $(date) - creating a new logs directory ${LOGS_DIR}";
+    mkdir -p ${LOGS_DIR};
+fi
+
+if [ ! -e ${LOG} ]; then
+    touch ${LOG};
+    echo "${PROG_NAME} - $(date) - starting a new log file ${LOG}" | tee -a ${LOG};
+fi
+
+if [ ! -d ${MANDATE_DIR} ]; then
+    echo "${PROG_NAME} - $(date) - creating new mandate directory ${MANDATE_DIR}" | tee -a ${LOG};
+    mkdir -p ${MANDATE_DIR};
+fi
+
+if [ ! -d ${TMP_DIR} ]; then
+    echo "${PROG_NAME} - $(date) - creating new temporary directory ${TMP_DIR}" | tee -a ${LOG};
+    mkdir -p ${TMP_DIR};
+fi
+
+
+####
+# handle input parameters
+####
+
+
+#check for requests for help
+if [ "$1" = '--help' ] || [ "$1" = '-h' ] || [ ! "$1" ]; then
+    cat 1>&2 <<EOF
+Usage: handbackData -d <path_to_directory> -f <clients_first_name> -l <clients_last_name> -e <clients_email>
+Create a tarball of some directory and place it in outgoing for retrieval by a client.
+EOF
+    exit 1
+fi
+
+#parse user-supplied parameters
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -d|--directory)
+    DIRECTORY="$2"
+    shift # past argument
+    ;;
+    -f|--first)
+    FIRSTNAME="$2"
+    shift # past argument
+    ;;
+    -l|--last)
+    LASTNAME="$2"
+    shift # past argument
+    ;;
+    -e|--email)
+    EMAIL=$2
+    shift # past argument
+    ;;
+    *)
+            # unknown option
+    ;;
+esac
+shift # past argument or value
+done
+
+#check user-supplied parameters
+#check that the directory exists
+if [ ! -e ${DIRECTORY} ]; then
+    cat 1>&2 <<EOF
+The directory ${DIRECTORY} does not exist.
+Try typing 
+    handbackData -h 
+to get help.
+EOF
+    exit 1
+fi
+
+#check that the firstname exists and does not start with -
+if [[ ! ${FIRSTNAME} || $(expr match ${FIRSTNAME} "-") == 1 ]]; then
+    cat 1>&2 <<EOF
+You have not supplied the first name of the client.
+Try typing 
+    handbackData -h 
+to get help.
+EOF
+    exit 1
+fi
+
+#check that the lastname exists and does not start with -
+if [[ ! ${LASTNAME} || $(expr match ${LASTNAME} "-") == 1 ]]; then
+    cat 1>&2 <<EOF
+You have not supplied the last name of the client.
+Try typing
+    handbackData -h
+to get help.
+EOF
+    exit 1
+fi
+
+#check that the email exists and has an @ in it
+if [[ ! ${EMAIL} || $(expr index $EMAIL "@") == 0 ]]; then
+    cat 1>&2 <<EOF
+You have not supplied the email of the client.
+Try typing
+    handbackData -h
+to get help.
+EOF
+    exit 1
+fi
+
+
+#log
+echo -e "$PROG_NAME - $(date) - starting. called with $* " >> ${LOG}
+
+#make an output directory and start a log for this specific job
+ARCHIVE_NAME=$(basename ${DIRECTORY})
+ARCHIVE_DIR=${TMP_DIR}/${ARCHIVE_NAME}
+ARCHIVE_LOG=${LOGS_DIR}/${ARCHIVE_NAME}.log
+touch ${ARCHIVE_LOG}
+if [ ! -d ${ARCHIVE_DIR} ]; then
+    mkdir ${ARCHIVE_DIR}
+    echo "$PROG_NAME - $(date) - archive directory: ${ARCHIVE_DIR} was created" | tee -a ${ARCHIVE_LOG}
+fi
+
+
+#review command line parameters and log
+echo -e "$PROG_NAME - $(date) - starting. parameters are: \n\
+DIRECTORY TO PREPARE  = ${DIRECTORY} \n\
+CLIENT'S FIRST NAME    = ${FIRSTNAME} \n\
+CLIENT'S LAST NAME     = ${LASTNAME}  \n\
+CLIENT'S EMAIL         = ${EMAIL}     \n" | tee -a ${ARCHIVE_LOG}
+
+
+#create a listing of the directory to be archived
+if ls -lahR ${DIRECTORY} > ${ARCHIVE_DIR}/archive.listing.${ARCHIVE_NAME}; then
+    echo "$PROG_NAME - $(date) - archive listing: ${ARCHIVE_DIR}/archive.listing.${ARCHIVE_NAME} was created" | tee -a ${ARCHIVE_LOG}
+fi
+
+#make the tarball archive
+tar -zcvf ${ARCHIVE_DIR}/${ARCHIVE_NAME}.tar.gz \
+        --preserve-permissions \
+        ${DIRECTORY};
+
+TAR_EXIT=$?
+
+# check the tar process and rename original input directory
+if [ $? -eq 0 ]; then
+    echo "$PROG_NAME - $(date) - tar exited successfully with exit code ${TAR_EXIT}" | tee -a ${LOG};
+    #rename the source directory
+    if mv ${DIRECTORY} ${DIRECTORY}.canBeDeletedAfterRetrieval; then
+        echo "$PROG_NAME - $(date) - input directory was renamed to  ${DIRECTORY}.canBeDeletedAfterRetrieval" | tee -a ${ARCHIVE_LOG};
+    else
+        echo "$PROG_NAME - $(date) - error trying to move ${DIRECTORY} to  ${DIRECTORY}.canBeDeletedAfterRetrieval" | tee -a ${ARCHIVE_LOG};
+    fi
+    #make an md5 checksum and add it to the archive directory 
+    md5sum < ${ARCHIVE_DIR}/${ARCHIVE_NAME}.tar.gz > ${ARCHIVE_DIR}/md5sum.result
+    echo "md5sum of ${ARCHIVE_NAME}.tar.gz should give a result corresponding to the above string of letters and numbers" >> ${ARCHIVE_DIR}/md5sum.result   
+else
+    echo "$PROG_NAME - $(date) - error trying to tarball - tar exited with exit code ${TAR_EXIT}" | tee -a ${ARCHIVE_LOG};
+fi
+
+
+# move the completed archive to the outgoing directory
+if mv ${ARCHIVE_DIR} ${OUTGOING_DIR} ; then
+    echo "$PROG_NAME - $(date) - ${ARCHIVE_NAME} was successfully moved to ${OUTGOING_DIR}  " | tee -a ${ARCHIVE_LOG};
+else
+    echo "$PROG_NAME - $(date) - error trying to mv ${ARCHIVE_NAME} to ${OUTGOING_DIR}" | tee -a ${ARCHIVE_LOG};
+fi
+
+# finally, add the details of the archive to the handbackMandate
+if [ ! -e ${MANDATE_DIR}/handbackMandate ]; then
+	touch ${MANDATE_DIR}/handbackMandate;
+        echo "$PROG_NAME - $(date) - a new mandate file was created: ${MANDATE_DIR}/handbackMandate" | tee -a ${LOG};
+fi
+
+if echo -e "0\t${ARCHIVE_NAME}\t${FIRSTNAME}\t${LASTNAME}\t${EMAIL}\t$(date)\t${DIRECTORY}" >> ${MANDATE_DIR}/handbackMandate; then
+    echo "$PROG_NAME - $(date) - ${ARCHIVE_NAME} was successfully added to the the mandate file: ${MANDATE_DIR}/handbackMandate" | tee -a ${ARCHIVE_LOG};
+else
+    echo "$PROG_NAME - $(date) - error trying to add ${ARCHIVE_NAME} to the the mandate file: ${MANDATE_DIR}/handbackMandate" | tee -a ${ARCHIVE_LOG};
+fi
+
+#log end time
+END_TIME=$(date +%s.%N)
+ELAPSED_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+echo "$PROG_NAME - $(date) - finished preparing ${ARCHIVE_NAME}. logfile is in ${LOG} and ${ARCHIVE_LOG}" | tee -a ${LOG}
+echo "$PROG_NAME - $(date) - elapsed time is: ${ELAPSED_TIME}" | tee -a ${LOG}
+echo -e "===\n" >> ${LOG}
+
+
+exit
+
+#=================================================================================
+
+
+notes
+
+example directory to compress and prepare for handback
+/data/WHRI-GenomeCentre/shares/Projects/NGS_Projects/DNA_Sequencing/...
