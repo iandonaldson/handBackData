@@ -194,7 +194,7 @@ tar -zcvf ${ARCHIVE_DIR}/${ARCHIVE_NAME}.tar.gz \
 TAR_EXIT=$?
 
 # check the tar process and rename original input directory
-if [ $? -eq 0 ]; then
+if [ ${TAR_EXIT} -eq 0 ]; then
     echo "$PROG_NAME - $(date) - tar exited successfully with exit code ${TAR_EXIT}" | tee -a ${LOG};
     #rename the source directory
     if mv ${DIRECTORY} ${DIRECTORY}.canBeDeletedAfterRetrieval; then
